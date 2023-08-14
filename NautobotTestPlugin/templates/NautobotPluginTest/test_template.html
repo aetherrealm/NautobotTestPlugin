@@ -1,0 +1,15 @@
+{% extends 'extras/job.html' %}
+{% block content %}
+    <div class="row">
+        <div class="col-md-12">
+        Shameless copy pasta.
+        </div>
+    </div>
+    {{ block.super }}
+{% endblock content %}
+{% block javascript %}
+    {{ block.super }}
+    <script>
+        console.log("Example Job Javascript.");
+    </script>
+{% endblock javascript %}
