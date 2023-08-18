@@ -1,7 +1,7 @@
 from nautobot.apps import NautobotAppConfig
 
-class TestPlugin(NautobotAppConfig):
-    name = "NautobotTestPlugin"
+class NautobotTestPlugin(NautobotAppConfig):
+    name = "nautobottestplugin"
     verbose_name = "Test Plugin"
     description = "A test description."
     version = "0.1"
@@ -10,4 +10,4 @@ class TestPlugin(NautobotAppConfig):
     required_settings = []
     default_settings = {"loud": False}
 
-config = TestPlugin
+config = NautobotTestPlugin

@@ -38,7 +38,7 @@ class CreateVLANs(Job):
 
     site = ObjectVar(model=Site, display_field="name")
 
-    tenant_group = ObjectVar(model=TenantGroup, display_filed="name")
+    tenant_group = ObjectVar(model=TenantGroup, display_field="name")
 
     tenant = ObjectVar(model=Tenant, display_field="name")
 
