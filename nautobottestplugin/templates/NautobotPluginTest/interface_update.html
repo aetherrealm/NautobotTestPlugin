@@ -1,0 +1,64 @@
+{% extends 'extras/job.html' %}
+{% block extra_styles %}
+.hidden {
+    display: none !important;
+}
+{% endblock %}
+{% block javascript %}
+    {{ block.super }}
+<script>
+    // Mode selection
+    var modeSelect = document.getElementById("id_mode");
+
+    // Base Objects by ID
+    var taggedVlans = document.getElementById("id_tagged_vlans");
+    var untaggedVlan = document.getElementById("id_untagged_vlan");
+    var IPElement = document.getElementById("id_IP");
+    
+    // Parent & Grandparent Div boxes
+    var IPParentDiv = IPElement.parentNode;
+    var IPGrandParentDiv = IPParentDiv.parentNode;
+
+    var taggedVlansParentDiv = taggedVlans.parentNode;
+    var taggedVlansGrandParentDiv = taggedVlansParentDiv.parentNode;
+    
+    var untaggedVlanParentDiv = untaggedVlan.parentNode;
+    var untaggedVlanGrandParentDiv = untaggedVlanParentDiv.parentNode;
+
+    // Hide all objects
+    untaggedVlanGrandParentDiv.style.display = "none";
+    taggedVlansGrandParentDiv.style.display = "none";
+    IPGrandParentDiv.style.display = "none";
+    
+    modeSelect.addEventListener("change", function() {
+        var selectedValue = modeSelect.value;
+
+        if (selectedValue === "routed") {
+            console.log("Setting route to block")
+            untaggedVlanGrandParentDiv.style.display = "none";
+            taggedVlansGrandParentDiv.style.display = "none";
+            IPGrandParentDiv.style.display = "block";
+
+        } else if (selectedValue === "access") {
+            console.log("Setting untagged vlan to block")
+            untaggedVlanGrandParentDiv.style.display = "block";
+            taggedVlansGrandParentDiv.style.display = "none";
+            IPGrandParentDiv.style.display = "none";
+
+        } else if (selectedValue === "trunked") {
+            console.log("Setting tagged vlan to block")
+            console.log(untaggedVlanGrandParentDiv)
+            untaggedVlanGrandParentDiv.style.display = "none";
+            taggedVlansGrandParentDiv.style.display = "block";
+            IPGrandParentDiv.style.display = "none";
+
+        } else if (selectedValue === "" ) {
+            console.log("Hide all elements")
+            untaggedVlanGrandParentDiv.style.display = "none";
+            taggedVlansGrandParentDiv.style.display = "none";
+            IPGrandParentDiv.style.display = "none";
+
+        }
+    });
+</script>
+{% endblock javascript %}
