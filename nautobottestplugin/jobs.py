@@ -28,12 +28,12 @@ class DCNUpdateDeviceInterfaces(Job):
             "tagged_vlans"
         ]
     
-    myVLAN = VLAN.objects.get(vid=99)
     device = ObjectVar(model=Device, display_field="name", label="Device:")
     interface = ObjectVar(model=Interface, display_field="name", query_params={'device_id':'$device'}, label="Interface:")
     interface_status = ObjectVar(model=Status, display_field="name", label="Status:")
     interface_desc = StringVar(default="device:port")
-    mode = ChoiceVar(choices=(("",""),("access","access"), ("trunked", "trunked"), ("routed", "routed")))
+    mode = ChoiceVar(choices=(("",""),("access","Access"), ("pruned_trunk", "Pruned Trunk"), 
+                              ("unpruned_trunk", "Unpruned Trunk"), ("routed", "Routed")))
     IP = ObjectVar(model=IPAddress, display_field="address", label="IP:", required=False)
     untagged_vlan = ObjectVar(model=VLAN, display_field="vid", label="Untagged VLAN:", required=False)
     tagged_vlans = MultiObjectVar(model=VLAN, display_field="vid", label="Tagged VLANs:", required=False)
@@ -67,6 +67,7 @@ class DCNUpdateDeviceInterfaces(Job):
             int_obj.tagged_vlans.clear()
             int_obj.description = self.interface_desc
             int_obj.save()
+            self.log_info(f"IP:{self.ip_id}")
         # Updates port to Access mode
         if self.data['untagged_vlan'] is not None and self.data['mode'] == "access":
             # Gets the PK of the untagged vlan from the form
@@ -81,21 +82,67 @@ class DCNUpdateDeviceInterfaces(Job):
                 pass
             # Looks up the Interface in the DB
             int_obj = Interface.objects.get(pk=self.interface_id)
-            # Sets the rest of the variabes
+            # Mode must be set before untagged_vlan can be added
             int_obj.mode = 'access'
+            int_obj.save()
+            # Sets the rest of the variabes
             int_obj.status_id = self.status_id
             int_obj.tagged_vlans.clear()
             int_obj.untagged_vlan_id = self.untagged_vlan_id
             int_obj.description = self.interface_desc
             int_obj.save()
+            self.log_info(f"Untagged_VLAN:{self.untagged_vlan_id}")
         # Updates port to Pruned Trunk
-        if self.data['tagged_vlans'] is not None and self.data['mode'] == "trunked":
+        if self.data['tagged_vlans'] is not None and self.data['mode'] == "pruned_trunk":
+            # Checks if an IP address was assigned to the interface and removes the association if present
+            try:
+                ip_obj = IPAddress.objects.get(assigned_object_id=self.interface_id)
+                ip_obj.assigned_object_id = None
+                ip_obj.assigned_object_type_id = None
+                ip_obj.save()
+            except:
+                pass
             # Gets the PKs of the tagged vlans from the form
             self.tagged_vlans_ids = [vlan.id for vlan in self.data['tagged_vlans']]
-
+            # Looks up the Interface in the DB
+            int_obj = Interface.objects.get(pk=self.interface_id)
+            # Mode must be set before tagged_vlans can be added
+            int_obj.mode = 'tagged'
+            int_obj.save()
+            # Gets VLAN objects
+            vlan_objs = []
+            for vlan in self.tagged_vlans_ids:
+                vlan_objs.append(VLAN.objects.get(pk=vlan))
+            # Sets tagged VLANs
+            for vlan_obj in vlan_objs:
+                int_obj.tagged_vlans.add(vlan_obj)
+            # Sets the rest of the variabes
+            
+            int_obj.status_id = self.status_id
+            int_obj.untagged_vlan_id = None
+            int_obj.description = self.interface_desc
+            int_obj.save()
             self.log_info(f"Tagged_VLANs:{self.tagged_vlans_ids}")
         # Updates port to Unpruned Trunk
-        if self.data['tagged_vlans'] is None and self.data['mode'] == "trunked":
+        if self.data['mode'] == "unpruned_trunk":
+            # Checks if an IP address was assigned to the interface and removes the association if present
+            try:
+                ip_obj = IPAddress.objects.get(assigned_object_id=self.interface_id)
+                ip_obj.assigned_object_id = None
+                ip_obj.assigned_object_type_id = None
+                ip_obj.save()
+            except:
+                pass
+            # Looks up the Interface in the DB
+            int_obj = Interface.objects.get(pk=self.interface_id)
+            # Sets the rest of the variabes
+            int_obj.mode = 'tagged-all'
+            int_obj.status_id = self.status_id
+            int_obj.tagged_vlans.clear()
+            int_obj.untagged_vlan_id = None
+            int_obj.description = self.interface_desc
+            int_obj.save()
+            self.log_info(f"{self.data['interface']} has been set to an unpruned trunk.")
         # if commit:
 
         #     self.debug = data["debug"]

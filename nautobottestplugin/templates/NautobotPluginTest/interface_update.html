@@ -40,14 +40,13 @@
             taggedVlansGrandParentDiv.style.display = "none";
             IPGrandParentDiv.style.display = "none";
 
-        } else if (selectedValue === "trunked") {
+        } else if (selectedValue === "pruned_trunk") {
             console.log("Setting tagged vlan to block")
-            console.log(untaggedVlanGrandParentDiv)
             untaggedVlanGrandParentDiv.style.display = "none";
             taggedVlansGrandParentDiv.style.display = "block";
             IPGrandParentDiv.style.display = "none";
 
-        } else if (selectedValue === "" ) {
+        } else if (selectedValue === "" || selectedValue === "unpruned_trunk") {
             console.log("Hide all elements")
             untaggedVlanGrandParentDiv.style.display = "none";
             taggedVlansGrandParentDiv.style.display = "none";
