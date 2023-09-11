@@ -4,9 +4,9 @@ class NautobotTestPlugin(NautobotAppConfig):
     name = "nautobottestplugin"
     verbose_name = "Test Plugin"
     description = "A test description."
-    version = "0.1"
+    version = "1.0.0"
     author = "Michael Cote"
-    base_url = "test-plugin"
+    base_url = "nautobottestplugin"
     required_settings = []
     default_settings = {"loud": False}
 

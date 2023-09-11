@@ -1,7 +1,8 @@
 # views.py
-from django.http import HttpResponseRedirect
-from formtools.wizard.views import SessionWizardView
+from django.shortcuts import render
+from nautobot.apps.views import NautobotUIViewSet
+from django.views.generic import View
 
-class VLANWizard(SessionWizardView):
-    def done(self, form_list, **kwargs):
-        return HttpResponseRedirect('/page-to-redirect-to-when-done/')
+class Wizards(View):
+    def get(self, request):
+        return render(request, 'NautobotPluginTest/plugin_home.html')

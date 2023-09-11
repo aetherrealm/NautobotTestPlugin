@@ -8,11 +8,13 @@
     // Base Objects by ID
     var taggedVlans = document.getElementById("id_tagged_vlans");
     var untaggedVlan = document.getElementById("id_untagged_vlan");
-    var IPElement = document.getElementById("id_IP");
-    
+    var ipAddress = document.getElementById("id_IP");
+    var interfaceMode = document.getElementById("id_mode");
+    var parentLag = document.getElementById("id_parent_lag");
+
     // Parent & Grandparent Div boxes
-    var IPParentDiv = IPElement.parentNode;
-    var IPGrandParentDiv = IPParentDiv.parentNode;
+    var ipParentDiv = ipAddress.parentNode;
+    var ipGrandParentDiv = ipParentDiv.parentNode;
 
     var taggedVlansParentDiv = taggedVlans.parentNode;
     var taggedVlansGrandParentDiv = taggedVlansParentDiv.parentNode;
@@ -20,37 +22,97 @@
     var untaggedVlanParentDiv = untaggedVlan.parentNode;
     var untaggedVlanGrandParentDiv = untaggedVlanParentDiv.parentNode;
 
-    // Hide all objects
+    var modeParentDiv = interfaceMode.parentNode;
+    var modeGrandParentDiv = modeParentDiv.parentNode;
+
+    var parentLagParentDiv = parentLag.parentNode;
+    var parentLagGrandParentDiv = parentLagParentDiv.parentNode;
+
+    // Hide mode specific boxes by default
     untaggedVlanGrandParentDiv.style.display = "none";
     taggedVlansGrandParentDiv.style.display = "none";
-    IPGrandParentDiv.style.display = "none";
-    
+    ipGrandParentDiv.style.display = "none";
+
+    // Function to check if the lagSpan element has loaded yet
+    function checkLagSpan() {
+        var parentLagSpan = document.getElementById("select2-id_parent_lag-container");
+
+        if (parentLagSpan) {
+            // Element found, stop polling
+            clearInterval(intervalId);
+            console.log("Element has loaded:", parentLagSpan)
+
+            // Function to run when a mutation is detected
+            function mutationCallback(mutationsList) {
+                for (var mutation of mutationsList) {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'title') {
+                        // The 'title' attribute of the LagSpan has changed
+                        var lagSpanTitle = parentLagSpan.getAttribute('title');
+                        
+                        if (lagSpanTitle !== null) {
+                            console.log("Title has changed to:", lagSpanTitle);
+                            untaggedVlanGrandParentDiv.style.display = "none";
+                            taggedVlansGrandParentDiv.style.display = "none";
+                            ipGrandParentDiv.style.display = "none";
+                            modeGrandParentDiv.style.display = "none"; 
+                        } else if (lagSpanTitle === null) {
+                            console.log("Title is blank")
+                            modeGrandParentDiv.style.display = "block"; 
+                        }
+                    }
+                }
+            }
+
+            // Creates a Mutation Observer instance
+            var observer = new MutationObserver(mutationCallback);
+
+            // Configures the observer to watch for changes to the 'attributes' of the LagSpan element
+            var observerConfig = { attributes: true };
+
+            // Start observing the <span> element
+            observer.observe(parentLagSpan, observerConfig);
+        }
+    }
+
+    // Polling interval (in milliseconds)
+    var pollingInterval = 1000; // Poll every 1 second
+
+    // Start polling
+    var intervalId = setInterval(checkLagSpan, pollingInterval);
+
+    // Check the selected mode on the page and decide which Divs to reveal 
     modeSelect.addEventListener("change", function() {
         var selectedValue = modeSelect.value;
 
         if (selectedValue === "routed") {
             console.log("Setting route to block")
+            parentLagGrandParentDiv.style.display = "none";
             untaggedVlanGrandParentDiv.style.display = "none";
             taggedVlansGrandParentDiv.style.display = "none";
-            IPGrandParentDiv.style.display = "block";
+            ipGrandParentDiv.style.display = "block";
 
         } else if (selectedValue === "access") {
             console.log("Setting untagged vlan to block")
+            parentLagGrandParentDiv.style.display = "none";
             untaggedVlanGrandParentDiv.style.display = "block";
             taggedVlansGrandParentDiv.style.display = "none";
-            IPGrandParentDiv.style.display = "none";
+            ipGrandParentDiv.style.display = "none";
 
         } else if (selectedValue === "pruned_trunk") {
             console.log("Setting tagged vlan to block")
+            parentLagGrandParentDiv.style.display = "none";
             untaggedVlanGrandParentDiv.style.display = "none";
             taggedVlansGrandParentDiv.style.display = "block";
-            IPGrandParentDiv.style.display = "none";
+            ipGrandParentDiv.style.display = "none";
 
         } else if (selectedValue === "" || selectedValue === "unpruned_trunk") {
-            console.log("Hide all elements")
+            if (selectedValue === "") {
+                parentLagGrandParentDiv.style.display = "block";
+            }
+            console.log("Hide all mode elements")
             untaggedVlanGrandParentDiv.style.display = "none";
             taggedVlansGrandParentDiv.style.display = "none";
-            IPGrandParentDiv.style.display = "none";
+            ipGrandParentDiv.style.display = "none";
 
         }
     });
