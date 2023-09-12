@@ -1,9 +1,12 @@
 # jobs.py
 
 import json
+import pandas as pd
+import numpy as np
 
 from django.apps import apps
 from django.core.exceptions import FieldError, ObjectDoesNotExist, ValidationError
+from django.db.models import Q
 
 from nautobot.tenancy.models import Tenant, TenantGroup
 from nautobot.ipam.models import IPAddress, Role, VLAN
@@ -16,6 +19,7 @@ from nautobot.extras.jobs import (
     ObjectVar,
     MultiObjectVar,
     ChoiceVar,
+    FileVar
 )
 
 
@@ -287,6 +291,70 @@ class DCNUpdateDeviceInterfaces(Job):
                 message="Nothing commited. Please make sure that either mode or LAG is set. Both cannot be set."
             )
 
+class BulkUpdateInterfaces(Job):
+
+    class Meta:
+        name = "Bulk Update Interfaces"
+        hidden = False
+        description = "Imports a Cabling Mac into Nautobot to bulk update interfaces."
+
+    cabling_mac = FileVar(label = "Upload Cabling MAC", description="Cabling MAC interface bulk import")
+
+    def run(self, data, commit):
+    # Accept data and commit
+        self.commit = commit
+        # Accept in the Cabling MAC XLSX, target the Cabling sheet, and ignore the first row
+        mac = pd.read_excel(data["cabling_mac"], sheet_name="Cabling", header=1)
+        # Replace the nan values with None instead for logic checking
+        mac = mac.replace(np.nan, None)
+        # Convert the sheet into a dictionary where each dictionary item represents a row
+        mac = mac.to_dict(orient='records')
+        # Get status UUID
+        for status in Status.objects.all():
+            if status.name == "Active":
+                status_obj = status
+
+        # For each row in the cabling mac
+        for row in mac:
+            # Does the device exist in Nautobot
+            try:
+                dev_obj = Device.objects.get(name=row.get('Device.1'))
+                #### If LAG is defined
+                if row.get('Port-Channel') is not None:
+                    # Retrieves the interface if it exists
+                    try:
+                        lag_obj = Interface.objects.get(Q(name=row.get('Port-Channel')), Q(device_id=dev_obj.id))
+                        self.log_info(message=f"{lag_obj.name} already exists. Ignoring description and mode settings.")
+                    # LAG doesn't exist, creating
+                    except:
+                        self.log_info(message=f"{int_obj.name} will be created on {dev_obj.name}.")
+                        lag_obj = Interface(name=row.get('Port-Channel'), device_id=dev_obj.id, type='lag', mode=row.get('Mode'),
+                                        status_id = status_obj.pk, description=row.get('Port-Channel Name'))
+                        lag_obj.validated_save()
+                # Retrieves the interface if it exists
+                try:
+                    int_obj = Interface.objects.get(Q(name=row.get('Port.1')),Q(device_id=dev_obj.id))
+                    self.log_info(message=f"{int_obj.name} will be updated on {dev_obj.name}.")
+                    int_obj.description = row.get('int desc')
+
+                    ###int_obj.lag_id = lag_obj.id
+
+                # Interface doesn't exist, creating
+                except:
+                    self.log_info(message=f"{int_obj.name} will be created on {dev_obj.name}.")
+                # Retrieves the interface description if it's filled out
+                try:
+                    int_desc = row.get('int desc')
+                # Creates a concatenated interface description if the above doesn't exist
+                except:
+                    int_desc = row.get('Device')+":"+row.get('Port')
+
+
+
+            # Device doesn't exist, goes to the next line            
+            except:
+                self.log_warning(message=f"{row.get('Device.1')} does not exist in Nautobot.")
+
 # class DeployNewNetwork(Job):
 #     class Meta:
 #         name = "Deploy New Non-Fabric Network"
@@ -330,4 +398,4 @@ class CreateVLANs(Job):
         self.log_success(message=self.gateway_ip)
 
 
-jobs = [DCNUpdateDeviceInterfaces, CreateVLANs]
+jobs = [DCNUpdateDeviceInterfaces, CreateVLANs, BulkUpdateInterfaces]
