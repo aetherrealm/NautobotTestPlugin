@@ -22,6 +22,7 @@ from nautobot.extras.jobs import (
     FileVar
 )
 
+###
 
 class DCNUpdateDeviceInterfaces(Job):
     template_name = "NautobotPluginTest/interface_update.html"
@@ -291,7 +292,9 @@ class DCNUpdateDeviceInterfaces(Job):
                 message="Nothing commited. Please make sure that either mode or LAG is set. Both cannot be set."
             )
 
-class BulkUpdateInterfaces(Job):
+###
+
+class DCNBulkUpdateInterfaces(Job):
 
     class Meta:
         name = "Bulk Update Interfaces"
@@ -319,57 +322,277 @@ class BulkUpdateInterfaces(Job):
             # Does the device exist in Nautobot
             try:
                 dev_obj = Device.objects.get(name=row.get('Device.1'))
-                #### If LAG is defined
+            except:
+                self.log_warning(message=f"{row.get('Device.1')} does not exist in Nautobot.")
+            if dev_obj:
+                # If LAG is defined
                 if row.get('Port-Channel') is not None:
-                    # Retrieves the interface if it exists
+                    # Retrieves the LAG interface if it exists
                     try:
                         lag_obj = Interface.objects.get(Q(name=row.get('Port-Channel')), Q(device_id=dev_obj.id))
                         self.log_info(message=f"{lag_obj.name} already exists. Ignoring description and mode settings.")
+                        lag_obj.description = row.get('int desc')
+                        mode = row.get('Mode')
+                        if mode == "Pruned Trunk":
+                            # Must set mode before assigning vlans
+                            lag_obj.mode = "tagged"
+                            lag_obj.save()
+                            # Gets VLAN objects
+                            vlan_objs = []
+                            vlans = str(row.get('VLANs')).split(',')
+                            for vlan in vlans:
+                                vlan_objs.append(VLAN.objects.get(vid=int(vlan)))
+                            # Sets tagged VLANs
+                            for vlan_obj in vlan_objs:
+                                lag_obj.tagged_vlans.add(vlan_obj)
+                            # Checks if an IP address was assigned to the interface and removes the association if present
+                            try:
+                                ip_obj = IPAddress.objects.get(assigned_object_id=lag_obj.id)
+                                ip_obj.assigned_object_id = None
+                                ip_obj.assigned_object_type_id = None
+                                ip_obj.save()
+                            except:
+                                self.log_info(f"{lag_obj.name} had no assigned IP to remove.")
+                                pass
+                            # Sets the rest of the variables
+                            lag_obj.untagged_vlan = None
+                            self.log_info(message=f"{lag_obj.name} was set to a pruned trunk.")
+                        elif mode == "Unpruned Trunk":
+                            # Checks if an IP address was assigned to the interface and removes the association if present
+                            try:
+                                ip_obj = IPAddress.objects.get(assigned_object_id=lag_obj.id)
+                                ip_obj.assigned_object_id = None
+                                ip_obj.assigned_object_type_id = None
+                                ip_obj.save()
+                            except:
+                                self.log_info(f"{lag_obj.name} had no assigned IP to remove.")
+                                pass
+                            # Must set mode before assigning vlans
+                            lag_obj.mode = "tagged-all"
+                            lag_obj.save()
+                            # Sets the rest of the variables
+                            lag_obj.untagged_vlan = None
+                            lag_obj.tagged_vlans.clear()
+                            self.log_info(message=f"{lag_obj.name} was set to an unpruned trunk.")
+                        elif mode == "Access":
+                            # Checks if an IP address was assigned to the interface and removes the association if present
+                            try:
+                                ip_obj = IPAddress.objects.get(assigned_object_id=lag_obj.id)
+                                ip_obj.assigned_object_id = None
+                                ip_obj.assigned_object_type_id = None
+                                ip_obj.save()
+                            except:
+                                self.log_info(f"{lag_obj.name} had no assigned IP to remove.")
+                                pass
+                            # Must set mode before assigning vlans
+                            lag_obj.mode = "access"
+                            lag_obj.save()
+                            # Gets VLAN object
+                            vlan = str(row.get('VLANs')).split(',')
+                            # If more than one VLAN is present but the port is set to access, only the first VLAN is used
+                            vlan_obj = VLAN.objects.get(vid=int(vlan[0]))
+                            # Sets the rest of the variables
+                            lag_obj.tagged_vlans.clear()
+                            lag_obj.untagged_vlan = vlan_obj
+                            self.log_info(message=f"{lag_obj.name} was set to an access port.")
+                        elif mode == "Routed":
+                            # Looks up the IP in the DB
+                            ip_obj = IPAddress.objects.get(address=row.get('IP'))
+                            # Assign the IP to the interface
+                            ip_obj.assigned_object_id = lag_obj.id
+                            ip_obj.assigned_object_type_id = 4
+                            ip_obj.save()
+                            # Sets the rest of the variables
+                            lag_obj.untagged_vlan = None
+                            lag_obj.tagged_vlans.clear()
+                            lag_obj.mode = ""
+                            self.log_success(
+                                obj=lag_obj, message=f"{lag_obj} has been updated to a routed port."
+                            )
+                        lag_obj.validated_save()   
                     # LAG doesn't exist, creating
                     except:
-                        self.log_info(message=f"{int_obj.name} will be created on {dev_obj.name}.")
-                        lag_obj = Interface(name=row.get('Port-Channel'), device_id=dev_obj.id, type='lag', mode=row.get('Mode'),
-                                        status_id = status_obj.pk, description=row.get('Port-Channel Name'))
+                        self.log_info(message=f"{lag_obj.name} will be created on {dev_obj.name}.")
+                        lag_obj = Interface(name=row.get('Port-Channel'), device_id=dev_obj.id, type='lag',
+                                        status_id=status_obj.pk, description=row.get('Port-Channel Name'))
                         lag_obj.validated_save()
+                        # Apply variables to lag_obj
+                        mode = row.get('Mode')
+                        if mode == "Pruned Trunk":
+                            # Must set mode before assigning vlans
+                            lag_obj.mode = "tagged"
+                            lag_obj.save()
+                            # Gets VLAN objects
+                            vlan_objs = []
+                            vlans = str(row.get('VLANs')).split(',')
+                            for vlan in vlans:
+                                vlan_objs.append(VLAN.objects.get(vid=int(vlan)))
+                            # Sets tagged VLANs
+                            for vlan_obj in vlan_objs:
+                                lag_obj.tagged_vlans.add(vlan_obj)
+                            self.log_info(message=f"{lag_obj.name} has been created as a pruned trunk.")
+                        elif mode == "Unpruned Trunk":
+                            # Must set mode before assigning vlans
+                            lag_obj.mode = "tagged-all"
+                            lag_obj.save()
+                        elif mode == "Access":
+                            # Must set mode before assigning vlans
+                            lag_obj.mode = "access"
+                            lag_obj.save()
+                            # Gets VLAN object
+                            vlan = str(row.get('VLANs')).split(',')
+                            # If more than one VLAN is present but the port is set to access, only the first VLAN is used
+                            vlan_obj = VLAN.objects.get(vid=int(vlan[0]))
+                            lag_obj.untagged_vlan = vlan_obj
+                            self.log_info(message=f"{lag_obj.name} has been created as an access port.")
+                        elif mode == "Routed":
+                            # Looks up the IP in the DB
+                            ip_obj = IPAddress.objects.get(address=row.get('IP'))
+                            # Assign the IP to the interface
+                            ip_obj.assigned_object_id = lag_obj.id
+                            ip_obj.assigned_object_type_id = 4
+                            ip_obj.save()
+                            # Looks up the Interface in the DB
+                            int_obj = Interface.objects.get(pk=self.interface_id)
+                            # Sets the rest of the variables
+                            lag_obj.untagged_vlan = None
+                            lag_obj.tagged_vlans.clear()
+                            self.log_success(
+                                obj=int_obj, message=f"{int_obj} has been created as a routed port."
+                            )
+                        lag_obj.validated_save()   
                 # Retrieves the interface if it exists
                 try:
                     int_obj = Interface.objects.get(Q(name=row.get('Port.1')),Q(device_id=dev_obj.id))
                     self.log_info(message=f"{int_obj.name} will be updated on {dev_obj.name}.")
                     int_obj.description = row.get('int desc')
-
-                    ###int_obj.lag_id = lag_obj.id
+                    # If a lag_obj was defined above
+                    if lag_obj:
+                        int_obj.lag_id = lag_obj.id
+                        int_obj.mode = None
+                        int_obj.validated_save()
+                        self.log_info(message=f"{int_obj.name} was set as a member of {lag_obj.name}.")
+                    # If the port isn't a member of a LAG, set the extra variables
+                    else:
+                        mode = row.get('Mode')
+                        int_obj.lag_id = None
+                        if mode == "Pruned Trunk":
+                            # Must set mode before assigning vlans
+                            int_obj.mode = "tagged"
+                            int_obj.save()
+                            # Gets VLAN objects
+                            vlan_objs = []
+                            vlans = str(row.get('VLANs')).split(',')
+                            for vlan in vlans:
+                                vlan_objs.append(VLAN.objects.get(vid=int(vlan)))
+                            # Sets tagged VLANs
+                            for vlan_obj in vlan_objs:
+                                int_obj.tagged_vlans.add(vlan_obj)
+                            # Checks if an IP address was assigned to the interface and removes the association if present
+                            try:
+                                ip_obj = IPAddress.objects.get(assigned_object_id=int_obj.id)
+                                ip_obj.assigned_object_id = None
+                                ip_obj.assigned_object_type_id = None
+                                ip_obj.save()
+                            except:
+                                self.log_info(f"{int_obj.name} had no assigned IP to remove.")
+                                pass
+                            self.log_info(message=f"{int_obj.name} was set to a pruned trunk.")
+                        elif mode == "Unpruned Trunk":
+                            # Checks if an IP address was assigned to the interface and removes the association if present
+                            try:
+                                ip_obj = IPAddress.objects.get(assigned_object_id=int_obj.id)
+                                ip_obj.assigned_object_id = None
+                                ip_obj.assigned_object_type_id = None
+                                ip_obj.save()
+                            except:
+                                self.log_info(f"{int_obj.name} had no assigned IP to remove.")
+                                pass
+                            # Must set mode before assigning vlans
+                            int_obj.mode = "tagged-all"
+                            int_obj.save()
+                            # Sets the rest of the variables
+                            int_obj.untagged_vlan = None
+                            int_obj.tagged_vlans.clear()
+                            self.log_info(message=f"{int_obj.name} was set to an unpruned trunk.")
+                        elif mode == "Access":
+                            # Checks if an IP address was assigned to the interface and removes the association if present
+                            try:
+                                ip_obj = IPAddress.objects.get(assigned_object_id=int_obj.id)
+                                ip_obj.assigned_object_id = None
+                                ip_obj.assigned_object_type_id = None
+                                ip_obj.save()
+                            except:
+                                self.log_info(f"{int_obj.name} had no assigned IP to remove.")
+                                pass
+                            # Must set mode before assigning vlans
+                            int_obj.mode = "access"
+                            int_obj.save()
+                            # Gets VLAN object
+                            vlan = str(row.get('VLANs')).split(',')
+                            # If more than one VLAN is present but the port is set to access, only the first VLAN is used
+                            vlan_obj = VLAN.objects.get(vid=int(vlan[0]))
+                            int_obj.untagged_vlan = vlan_obj
+                            int_obj.tagged_vlans.clear()
+                            self.log_info(message=f"{int_obj.name} was set to an access port.")
+                        int_obj.validated_save()    
 
                 # Interface doesn't exist, creating
                 except:
                     self.log_info(message=f"{int_obj.name} will be created on {dev_obj.name}.")
-                # Retrieves the interface description if it's filled out
-                try:
-                    int_desc = row.get('int desc')
-                # Creates a concatenated interface description if the above doesn't exist
-                except:
-                    int_desc = row.get('Device')+":"+row.get('Port')
+                    # Media types in cabling mac need to be updated to match Nautobot media types
+                    int_obj = Interface(name=row.get('Port.1'), device_id=dev_obj.id, type=row.get('Media.1'),
+                                    status_id=status_obj.pk, description=row.get('int desc'))
+                    int_obj.validated_save()
+                    # If a lag_obj was defined above
+                    if lag_obj:
+                        int_obj.lag_id = lag_obj.id
+                        int_obj.mode = None
+                        int_obj.validated_save()
+                        self.log_info(message=f"{int_obj.name} was set as a member of {lag_obj.name}.")
+                    else:
+                        mode = row.get('Mode')
+                        if mode == "Unpruned Trunk":
+                            # Must set mode before assigning vlans
+                            int_obj.mode = "tagged"
+                            int_obj.save()
+                            # Gets VLAN objects
+                            vlan_objs = []
+                            vlans = str(row.get('VLANs')).split(',')
+                            for vlan in vlans:
+                                vlan_objs.append(VLAN.objects.get(vid=int(vlan)))
+                            # Sets tagged VLANs
+                            for vlan_obj in vlan_objs:
+                                int_obj.tagged_vlans.add(vlan_obj)
+                            self.log_info(message=f"{int_obj.name} was set to a pruned trunk.")
+                        elif mode == "Pruned Trunk":
+                            # Must set mode before assigning vlans
+                            int_obj.mode = "tagged-all"
+                            int_obj.save()
+                        elif mode == "Access":
+                            # Must set mode before assigning vlans
+                            int_obj.mode = "access"
+                            int_obj.save()
+                            # Gets VLAN object
+                            vlan = str(row.get('VLANs')).split(',')
+                            # If more than one VLAN is present but the port is set to access, only the first VLAN is used
+                            vlan_obj = VLAN.objects.get(vid=int(vlan[0]))
+                            int_obj.untagged_vlan = vlan_obj
+                        int_obj.validated_save()
 
+###
 
-
-            # Device doesn't exist, goes to the next line            
-            except:
-                self.log_warning(message=f"{row.get('Device.1')} does not exist in Nautobot.")
-
-# class DeployNewNetwork(Job):
-#     class Meta:
-#         name = "Deploy New Non-Fabric Network"
-#         hidden = False
-#         description = "Deploy a Non-Fabric Network"
-
-
-class CreateVLANs(Job):
-    # template_name = "NautobotPluginTest/test_template.html"
+class DCNDeployNetworks(Job):
+    template_name = "NautobotPluginTest/test_template.html"
 
     class Meta:
-        name = "Deploy New VLAN"
+        name = "Deploy New Network"
         hidden = False
-        description = "Test VLAN add Job"
-        field_order = ["vid", "vlan_desc", "vlan_role", "gateway_ip"]
+        description = "Deploy a new network in nautobot."
+        field_order = ["vid", 
+                       "vlan_desc", 
+                       "vlan_role", 
+                       "gateway_ip"]
 
     vid = IntegerVar(description="VLAN ID")
 
@@ -398,4 +621,4 @@ class CreateVLANs(Job):
         self.log_success(message=self.gateway_ip)
 
 
-jobs = [DCNUpdateDeviceInterfaces, CreateVLANs, BulkUpdateInterfaces]
+jobs = [DCNUpdateDeviceInterfaces, DCNDeployNetworks, DCNBulkUpdateInterfaces]
