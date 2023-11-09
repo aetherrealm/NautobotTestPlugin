@@ -9,7 +9,7 @@ from django.core.exceptions import FieldError, ObjectDoesNotExist, ValidationErr
 from django.db.models import Q
 
 from nautobot.tenancy.models import Tenant, TenantGroup
-from nautobot.ipam.models import IPAddress, Role, VLAN
+from nautobot.ipam.models import IPAddress, Role, VLAN, VRF, Prefix
 from nautobot.dcim.models import Site, Region, Device, Interface
 from nautobot.extras.models import Tag, Status
 from nautobot.extras.jobs import (
@@ -20,6 +20,8 @@ from nautobot.extras.jobs import (
     MultiObjectVar,
     ChoiceVar,
     FileVar,
+    IPNetworkVar,
+    IPAddressWithMaskVar
 )
 
 ###
@@ -34,7 +36,6 @@ class DCNUpdateDeviceInterfaces(Job):
         description = "Update Device Physical Interfaces"
         field_order = [
             "device",
-            "test_device",
             "interface",
             "interface_status",
             "interface_desc",
@@ -88,8 +89,7 @@ class DCNUpdateDeviceInterfaces(Job):
         model=IPAddress, display_field="address", label="IP:", required=False
     )
     untagged_vlan = ObjectVar(
-        model=VLAN, display_field="vid", label="Untagged VLAN:", required=False,
-        query_params={"site_id": ["null","$device.site_id"]} # WIP
+        model=VLAN, display_field="vid", label="Untagged VLAN:", required=False
     )
     tagged_vlans = MultiObjectVar(
         model=VLAN, display_field="vid", label="Tagged VLANs:", required=False
@@ -681,36 +681,29 @@ class DCNDeployNetworks(Job):
     template_name = "NautobotPluginTest/test_template.html"
 
     class Meta:
-        name = "Deploy New Network"
+        name = "Deploy a New Network"
         hidden = False
         description = "Deploy a new network in nautobot."
-        field_order = ["vid", "vlan_desc", "vlan_role", "gateway_ip"]
+        field_order = ["tenant", "site", "vid", "vlan_name", "vlan_role", "prefix", "prefix_vrf", "fabric_switch_groups"]
 
-    vid = IntegerVar(description="VLAN ID")
-
-    vlan_desc = StringVar()
-
-    ## region = ObjectVar(model=Region, display_field="name")
-
-    # site = ObjectVar(model=Site, display_field="name")
-
-    # tenant_group = ObjectVar(model=TenantGroup, display_field="name")
-
-    # tenant = ObjectVar(model=Tenant, display_field="name")
-
-    # tags = MultiObjectVar(model=Tag, display_field="name", label="Where should this VLAN apply?")
-
-    gateway_ip = ObjectVar(
-        model=IPAddress,
-        display_field="address",
-        required=False,
-        label="What is the gateway IP?",
-    )
-
-    vlan_role = ObjectVar(model=Role, display_field="name")
+    tenant = ObjectVar(model=Tenant, display_field="name", label="Tenant:", 
+                       required=True)
+    site = MultiObjectVar(model=Site, query_params={"tenant_id": "$tenant"}, display_field="name", label="Site:", 
+                     required=True)
+    vid = IntegerVar(min_value=2, max_value=4093, label="Vlan ID:", 
+                     required=True)
+    vlan_name = StringVar(min_length=1, max_length=32, 
+                          required=True)
+    vlan_role = ObjectVar(model=Role, display_field="name", label="VLAN Role:", 
+                          required=True)
+    prefix = IPNetworkVar(label="Prefix:", required=True)
+    prefix_vrf = ObjectVar(model=VRF, query_params={"tenant_id": "$tenant"}, display_field="name", label="Prefix VRF:", 
+                           required=True)
+    fabric_switch_groups = MultiObjectVar(model=Tag, query_params={"name__ic": "VLAN"}, display_field="name", label="Switch Groups:",
+                                          required=False)
 
     def run(self, data, commit):
-        self.log_success(message=self.gateway_ip)
+        self.log_success(message=self.prefix)
 
 
 jobs = [DCNUpdateDeviceInterfaces, DCNDeployNetworks, DCNBulkUpdateInterfaces]

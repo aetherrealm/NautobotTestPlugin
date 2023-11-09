@@ -7,16 +7,16 @@ from nautobot.core.apps import (
 )
 menu_items = (
     NavMenuTab(
-        name="DCN",
-        weight=350,
+        name="NOC",
+        weight=1,
         groups=(
             NavMenuGroup(
-                name="Wizards",
+                name="DCN",
                 weight=100,
                 items=(
                     NavMenuItem(
-                        link="",
-                        name="DCN Home",
+                        link="plugins:nautobottestplugin:dcn_home",
+                        name="Operations",
                         permissions=["nautobottestplugin.view_examplemodel"]
                     ),
                 ),
