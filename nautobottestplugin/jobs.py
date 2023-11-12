@@ -684,11 +684,11 @@ class DCNDeployNetworks(Job):
         name = "Deploy a New Network"
         hidden = False
         description = "Deploy a new network in nautobot."
-        field_order = ["tenant", "site", "vid", "vlan_name", "vlan_role", "prefix", "prefix_vrf", "fabric_switch_groups"]
+        field_order = ["tenant", "sites", "vid", "vlan_name", "vlan_role", "prefix", "prefix_vrf", "fabric_switch_groups"]
 
     tenant = ObjectVar(model=Tenant, display_field="name", label="Tenant:", 
                        required=True)
-    site = MultiObjectVar(model=Site, query_params={"tenant_id": "$tenant"}, display_field="name", label="Site:", 
+    sites = MultiObjectVar(model=Site, query_params={"tenant_id": "$tenant"}, display_field="name", label="Sites:", 
                      required=True)
     vid = IntegerVar(min_value=2, max_value=4093, label="Vlan ID:", 
                      required=True)
@@ -701,9 +701,50 @@ class DCNDeployNetworks(Job):
                            required=True)
     fabric_switch_groups = MultiObjectVar(model=Tag, query_params={"name__ic": "VLAN"}, display_field="name", label="Switch Groups:",
                                           required=False)
+    class orm_object:
+        def __init__(self, model_name, app_name, pks):
+            self.objs = []
+            model = apps.get_model(app_name, model_name)
+            for id in pks:
+                self.objs.append(model.objects.get(pk=id))
+
+        def __str__(self):
+            if len(self.objs) <= 1:
+                return self.objs[0].name
+            else:
+                obj_names = [f"{obj.name}" for obj in self.objs]
+                return ', '.join(obj_names) 
 
     def run(self, data, commit):
-        self.log_success(message=self.prefix)
+        # Accept data and commit from form
+        self.data = data
+        self.commit = commit
 
+        # Capture required variables
+        tenant = self.orm_object("Tenant", "tenancy", [self.data["tenant"].id])
+        self.log_info(f"{tenant} tenant")
+
+        sites = self.orm_object("Site", "dcim", [site.id for site in self.data["sites"]])
+        self.log_info(f"{sites} sites")
+
+        vid = self.data["vid"]
+        self.log_info(f"{vid} VID")
+
+        vlan_name = self.data['vlan_name']
+        self.log_info(f"{vlan_name} Vlan Name")
+
+        vlan_role = self.orm_object("Role", "ipam", [self.data['vlan_role'].id])
+        self.log_info(f"{vlan_role} Vlan Role")
+
+        prefix = self.data["prefix"]
+        self.log_info(f"{prefix} Prefix")
+
+        prefix_vrf = self.orm_object("VRF", "ipam", [self.data["prefix_vrf"].id])
+        self.log_info(f"{prefix_vrf} Prefix VRF")
+
+        # Capture Optional Variables
+
+        switch_groups = self.orm_object("Tag", "extras", [group.id for group in self.data["fabric_switch_groups"]])
+        self.log_info(f"{switch_groups} Switch Groups")        
 
 jobs = [DCNUpdateDeviceInterfaces, DCNDeployNetworks, DCNBulkUpdateInterfaces]
