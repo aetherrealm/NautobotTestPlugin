@@ -2,6 +2,74 @@
 {% block javascript %}
     {{ block.super }}
 <script>
-        var modeSelect = 10;
+
+// base Object IDs
+var networkSelect = document.getElementById("id_vlan_role");
+var fabricGroups = document.getElementById("id_fabric_switch_groups");
+
+// Parent & Grandparent Div Boxes
+var groupParentDiv = fabricGroups.parentNode;
+var groupGrandParentDiv = groupParentDiv.parentNode;
+
+// Hide group specific Divs by default
+groupGrandParentDiv.style.display = "none";
+
+// Function to check if the TagSpan element has loaded yet
+function checkTagSpan() {
+    var TagSpan = document.getElementById("select2-id_fabric_switch_groups-container");
+
+    if (TagSpan) {
+        // Element found, stop polling
+        clearInterval(intervalId);
+        console.log("Element has loaded:", TagSpan)
+
+        // Function to run when a mutation is detected
+        function mutationCallback(mutationsList) {
+            for (var mutation of mutationsList) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'title') {
+                    // The 'title' attribute of the TagSpan has changed
+                    var TagTitle = TagSpan.getAttribute('title');
+                    
+                    if (TagTitle !== null) {
+                        console.log("Title has changed to:", TagTitle);
+                        groupGrandParentDiv.style.display = "none"; 
+                    } else if (lagSpanTitle === null) {
+                        console.log("Title is blank")
+                        groupGrandParentDiv.style.display = "block"; 
+                    }
+                }
+            }
+        }
+
+        // Creates a Mutation Observer instance
+        var observer = new MutationObserver(mutationCallback);
+
+        // Configures the observer to watch for changes to the 'attributes' of the LagSpan element
+        var observerConfig = { attributes: true };
+
+        // Start observing the <span> element
+        observer.observe(TagSpan, observerConfig);
+    }
+}
+
+// Polling interval (in milliseconds)
+var pollingInterval = 1000; // Poll every 1 second
+
+// Start polling
+var intervalId = setInterval(checkLagSpan, pollingInterval);
+
+// Check the selected mode on the page and decide which Divs to reveal 
+networkSelect.addEventListener("change", function() {
+    var selectedValue = networkSelect.value;
+
+if (selectedValue === "evpn") {
+        console.log("Setting switchGroups to block")
+        groupGrandParentDiv.style.display = "block";
+
+    } else {
+        console.log("Setting switchGroups back to none")
+        groupGrandParentDiv.style.display = "none";
+    }
+});
 </script>
 {% endblock javascript %}

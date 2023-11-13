@@ -678,14 +678,17 @@ class DCNBulkUpdateInterfaces(Job):
 ###
 
 class DCNDeployNetworks(Job):
-    template_name = "NautobotPluginTest/test_template.html"
+    # Template includes javascript to hide and reveal fabric switch groups which is only used for EVPN.
+    template_name = "NautobotPluginTest/network_creation.html"
 
+    # Job metadata
     class Meta:
         name = "Deploy a New Network"
         hidden = False
         description = "Deploy a new network in nautobot."
         field_order = ["tenant", "sites", "vid", "vlan_name", "vlan_role", "prefix", "prefix_vrf", "fabric_switch_groups"]
 
+    # Form fields
     tenant = ObjectVar(model=Tenant, display_field="name", label="Tenant:", 
                        required=True)
     sites = MultiObjectVar(model=Site, query_params={"tenant_id": "$tenant"}, display_field="name", label="Sites:", 
@@ -701,30 +704,52 @@ class DCNDeployNetworks(Job):
                            required=True)
     fabric_switch_groups = MultiObjectVar(model=Tag, query_params={"name__ic": "VLAN"}, display_field="name", label="Switch Groups:",
                                           required=False)
+
+    
+    # Class for working with existing ORM objects
     class orm_object:
         def __init__(self, model_name, app_name, pks):
             self.objs = []
             model = apps.get_model(app_name, model_name)
-            for id in pks:
+            # For each item in the provided list if the list item is not None
+            gen_exp = (id for id in pks if id is not None)
+            for id in gen_exp:
                 self.objs.append(model.objects.get(pk=id))
+            # Add a none object with a pk of None to the list
+            if pks[0] is None:
+                obj = self.none_object()
+                self.objs.append(obj)
 
         def __str__(self):
-            if len(self.objs) <= 1:
+            # A single object was passed
+            if len(self.objs) == 1:
                 return self.objs[0].name
+            # More than one object was passed
             else:
                 obj_names = [f"{obj.name}" for obj in self.objs]
-                return ', '.join(obj_names) 
+                return ', '.join(obj_names)
+            
+        # Nested class for making up None objects
+        class none_object:
+            def __init__(self):
+                self.pk = None
+                self.name = None
+            def __str__(self):
+                return self.pk
 
     def run(self, data, commit):
         # Accept data and commit from form
         self.data = data
         self.commit = commit
 
+        # Other required objects
+        status = Status.objects.get(name="Active")
+
         # Capture required variables
         tenant = self.orm_object("Tenant", "tenancy", [self.data["tenant"].id])
         self.log_info(f"{tenant} tenant")
 
-        sites = self.orm_object("Site", "dcim", [site.id for site in self.data["sites"]])
+        sites = self.orm_object("Site", "dcim", [site.id for site in self.data["sites"]] if self.data["sites"] is not None else [None])
         self.log_info(f"{sites} sites")
 
         vid = self.data["vid"]
@@ -743,8 +768,51 @@ class DCNDeployNetworks(Job):
         self.log_info(f"{prefix_vrf} Prefix VRF")
 
         # Capture Optional Variables
+        if len(self.data["fabric_switch_groups"]) >= 1:
+            # Creates switch_groups class member with all of the tag PKs
+            switch_groups = self.orm_object("Tag", "extras", [group.id for group in self.data["fabric_switch_groups"]])
+            self.log_info(f"{switch_groups} Switch Groups")
+        else:
+            # Creates switch_groups class member with a none 0 index element
+            switch_groups = self.orm_object("Tag", "extras", [None])    
 
-        switch_groups = self.orm_object("Tag", "extras", [group.id for group in self.data["fabric_switch_groups"]])
-        self.log_info(f"{switch_groups} Switch Groups")        
+        # Check if Networks already exist
+        vlan_vid = VLAN.objects.filter(vid=vid).values_list('pk', flat=True)
+        if len(vlan_vid) >= 1:
+            self.log_warning(f"{vid} already exists.")
+        # Otherwise create the VLAN
+        else:
+            self.log_info("We made it this far...")
+            # If more than one site is assigned, assign the vlan globally (no site)
+            if len(sites.objs) >= 2:
+                vlan_site = None
+            # If exactly 1 site is assigned, assign to that site only
+            elif len(sites.objs) == 1:
+                vlan_site = sites.objs[0]
+            # If switch group tags had no selections
+            if switch_groups.objs[0].pk == None:
+                tag_list = []
+            # If switch group tags had at least 1 selection
+            else:
+                tag_list = [obj.pk for obj in switch_groups.objs]
+            # build vlan object    
+            vlan_obj = VLAN(
+                name=vlan_name,
+                vid=vid,
+                site=vlan_site,
+                tenant=tenant.objs[0],
+                status=status,
+                role=vlan_role.objs[0],
+                description=vlan_name,
+                tags=tag_list
+            )
+            # save vlan object to DB
+            vlan_obj.validated_save()
+            self.log_success(message=f"{vlan_obj.name} has been saved.")
+
+        
+        prefix_id = Prefix.objects.filter(prefix=prefix).values_list('pk', flat=True)
+        if len(prefix_id) >= 1:
+            self.log_warning(f"{prefix} already exists.")
 
 jobs = [DCNUpdateDeviceInterfaces, DCNDeployNetworks, DCNBulkUpdateInterfaces]
