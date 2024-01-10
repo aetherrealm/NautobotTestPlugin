@@ -6,6 +6,7 @@
     var modeSelect = document.getElementById("id_mode");
 
     // Base Objects by ID
+
     var taggedVlans = document.getElementById("id_tagged_vlans");
     var untaggedVlan = document.getElementById("id_untagged_vlan");
     var ipAddress = document.getElementById("id_IP");
@@ -33,13 +34,16 @@
     taggedVlansGrandParentDiv.style.display = "none";
     ipGrandParentDiv.style.display = "none";
 
+    // Polling interval (in milliseconds)
+    var pollingInterval = 1000; // Poll every 1 second
+
     // Function to check if the lagSpan element has loaded yet
     function checkLagSpan() {
         var parentLagSpan = document.getElementById("select2-id_parent_lag-container");
 
         if (parentLagSpan) {
             // Element found, stop polling
-            clearInterval(intervalId);
+            clearInterval(LagSpanIntervalId);
             console.log("Element has loaded:", parentLagSpan)
 
             // Function to run when a mutation is detected
@@ -74,11 +78,75 @@
         }
     }
 
-    // Polling interval (in milliseconds)
-    var pollingInterval = 1000; // Poll every 1 second
+    // Start polling
+    var LagSpanIntervalId = setInterval(checkLagSpan, pollingInterval);
+
+    // Function to check if the Device span element has loaded yet
+    function checkDevice() {
+        var Device = document.getElementById("select2-id_device-container");
+        var Form = document.getElementById("run");
+        if (Device) {
+            // Element found, stop polling
+            clearInterval(DeviceIntervalId);
+            console.log("Element has loaded:", Device)
+
+            // Function to run when a mutation is detected
+            function mutationCallback(mutationsList) {
+                for (var mutation of mutationsList) {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'title') {
+                        // The 'title' attribute of the DeviceSpan has changed
+                        var DeviceTitle = Device.getAttribute('title');
+                        
+                        if (DeviceTitle !== null) {
+                            console.log("Title has changed to:", DeviceTitle);
+                            const DeviceName = Device.title;
+                            const DeviceAPI = `http://127.0.0.1:8080/api/dcim/devices/?name=${DeviceName}`;
+
+                            fetch(DeviceAPI)
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error('Network response was not ok ' + response.statusText);
+                                }
+                                return response.json();
+                            })
+                            .then(Data => {
+                                const DeviceInfo = document.createElement('div');
+                                
+                                DeviceInfo.className = 'col-md-9'; // Optional: add a class for styling
+                                //DeviceInfo.textContent = `PK: ${DeviceAPI.results[0].id}`; // Add the device PK
+                                DeviceInfo.textContent = `${Data.results[0]}`;
+                                DeviceInfo.id= 'findme';
+                                console.log(DeviceAPI)
+                                // Append the new div to the container
+                                Form.appendChild(DeviceInfo);
+                            })
+                            .catch(error => {
+                                console.error('There has been a problem with your fetch operation:', error);
+                                const errorDiv = document.createElement('div');
+                                errorDiv.textContent = 'Error fetching data.';
+                                errorDiv.id='findme';
+                                Form.appendChild(errorDiv);
+                            });
+                        } else if (DeviceTitle === null) {
+                            console.log("Title is blank")
+                        }
+                    }
+                }
+            }
+
+            // Creates a Mutation Observer instance
+            var observer = new MutationObserver(mutationCallback);
+
+            // Configures the observer to watch for changes to the 'attributes' of the LagSpan element
+            var observerConfig = { attributes: true };
+
+            // Start observing the <span> element
+            observer.observe(Device, observerConfig);
+        }
+    }
 
     // Start polling
-    var intervalId = setInterval(checkLagSpan, pollingInterval);
+    var DeviceIntervalId = setInterval(checkDevice, pollingInterval);
 
     // Check the selected mode on the page and decide which Divs to reveal 
     modeSelect.addEventListener("change", function() {

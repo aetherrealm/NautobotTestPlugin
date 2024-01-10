@@ -21,7 +21,8 @@ from nautobot.extras.jobs import (
     ChoiceVar,
     FileVar,
     IPNetworkVar,
-    IPAddressWithMaskVar
+    IPAddressWithMaskVar,
+    BooleanVar
 )
 
 ###
@@ -686,7 +687,7 @@ class DCNDeployNetworks(Job):
         name = "Deploy a New Network"
         hidden = False
         description = "Deploy a new network in nautobot."
-        field_order = ["tenant", "sites", "vid", "vlan_name", "vlan_role", "prefix", "prefix_vrf", "fabric_switch_groups"]
+        field_order = ["tenant", "sites", "vid", "vlan_name", "vlan_role", "prefix", "prefix_vrf", "dhcp", "fabric_switch_groups"]
 
     # Form fields
     tenant = ObjectVar(model=Tenant, display_field="name", label="Tenant:", 
@@ -702,6 +703,7 @@ class DCNDeployNetworks(Job):
     prefix = IPNetworkVar(label="Prefix:", required=True)
     prefix_vrf = ObjectVar(model=VRF, query_params={"tenant_id": "$tenant"}, display_field="name", label="Prefix VRF:", 
                            required=True)
+    dhcp = BooleanVar(default=True, label="DHCP", required=True)
     fabric_switch_groups = MultiObjectVar(model=Tag, query_params={"name__ic": "VLAN"}, display_field="name", label="Switch Groups:",
                                           required=False)
 
@@ -749,6 +751,7 @@ class DCNDeployNetworks(Job):
         tenant = self.orm_object("Tenant", "tenancy", [self.data["tenant"].id])
         self.log_info(f"{tenant} tenant")
 
+        # Sites must be filled out, if for all sites all 3 must be defined.
         sites = self.orm_object("Site", "dcim", [site.id for site in self.data["sites"]] if self.data["sites"] is not None else [None])
         self.log_info(f"{sites} sites")
 
@@ -767,6 +770,9 @@ class DCNDeployNetworks(Job):
         prefix_vrf = self.orm_object("VRF", "ipam", [self.data["prefix_vrf"].id])
         self.log_info(f"{prefix_vrf} Prefix VRF")
 
+        dhcp = self.data["dhcp"]
+        self.log_info(f"Is DHCP enabled? {dhcp}")
+
         # Capture Optional Variables
         if len(self.data["fabric_switch_groups"]) >= 1:
             # Creates switch_groups class member with all of the tag PKs
@@ -776,25 +782,26 @@ class DCNDeployNetworks(Job):
             # Creates switch_groups class member with a none 0 index element
             switch_groups = self.orm_object("Tag", "extras", [None])    
 
-        # Check if Networks already exist
+        # If more than one site is assigned, assign the vlan globally (no site)
+        if len(sites.objs) >= 2:
+            vlan_site = None
+        # If exactly 1 site is assigned, assign to that site only
+        elif len(sites.objs) == 1:
+            vlan_site = sites.objs[0]
+        # If switch group tags had no selections
+        if switch_groups.objs[0].pk == None:
+            tag_list = []
+        # If switch group tags had at least 1 selection
+        else:
+            tag_list = [obj.pk for obj in switch_groups.objs]
+
+        # Check if VLAN already exist
         vlan_vid = VLAN.objects.filter(vid=vid).values_list('pk', flat=True)
         if len(vlan_vid) >= 1:
-            self.log_warning(f"{vid} already exists.")
+            self.log_failure(f"{vid} already exists.")
         # Otherwise create the VLAN
         else:
-            self.log_info("We made it this far...")
-            # If more than one site is assigned, assign the vlan globally (no site)
-            if len(sites.objs) >= 2:
-                vlan_site = None
-            # If exactly 1 site is assigned, assign to that site only
-            elif len(sites.objs) == 1:
-                vlan_site = sites.objs[0]
-            # If switch group tags had no selections
-            if switch_groups.objs[0].pk == None:
-                tag_list = []
-            # If switch group tags had at least 1 selection
-            else:
-                tag_list = [obj.pk for obj in switch_groups.objs]
+            self.log_info("VLAN creation...")
             # build vlan object    
             vlan_obj = VLAN(
                 name=vlan_name,
@@ -810,9 +817,28 @@ class DCNDeployNetworks(Job):
             vlan_obj.validated_save()
             self.log_success(message=f"{vlan_obj.name} has been saved.")
 
-        
+        # Checks if prefix already exists
         prefix_id = Prefix.objects.filter(prefix=prefix).values_list('pk', flat=True)
         if len(prefix_id) >= 1:
-            self.log_warning(f"{prefix} already exists.")
+            self.log_failure(f"{prefix} already exists.")
+
+        # Otherwise, create the Prefix
+        else:
+            # build prefix object
+            prefix_obj = Prefix(
+                prefix=prefix,
+                vrf=prefix_vrf.objs[0],
+                site=vlan_site,
+                tenant=tenant.objs[0],
+                vlan=vlan_obj,
+                is_pool=dhcp,
+                description=vlan_name,
+                role=vlan_role.objs[0],
+                status=status,
+            )
+
+            # save prefix object to DB
+            prefix_obj.validated_save()
+            self.log_success(message=f"{prefix_obj.prefix} has been saved.")
 
 jobs = [DCNUpdateDeviceInterfaces, DCNDeployNetworks, DCNBulkUpdateInterfaces]
