@@ -817,7 +817,7 @@ class DCNDeployNetworks(Job):
             vlan_obj.validated_save()
             self.log_success(message=f"{vlan_obj.name} has been saved.")
 
-        # Checks if prefix already exists
+        # Checks if prefix already exists   
         prefix_id = Prefix.objects.filter(prefix=prefix).values_list('pk', flat=True)
         if len(prefix_id) >= 1:
             self.log_failure(f"{prefix} already exists.")
