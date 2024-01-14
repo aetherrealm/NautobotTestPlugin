@@ -27,6 +27,12 @@ from nautobot.extras.jobs import (
 
 ###
 
+#### USED FOR FINDING MODEL FIELDS
+# def list_model_relationships(model):
+#     fields = [field.name for field in model._meta.get_fields()]
+#     return fields
+
+# print(list_model_relationships(VLAN))
 
 class DCNUpdateDeviceInterfaces(Job):
     template_name = "NautobotPluginTest/interface_update.html"
@@ -302,7 +308,6 @@ class DCNUpdateDeviceInterfaces(Job):
 
 
 ###
-
 
 class DCNBulkUpdateInterfaces(Job):
     class Meta:
@@ -793,7 +798,7 @@ class DCNDeployNetworks(Job):
             tag_list = []
         # If switch group tags had at least 1 selection
         else:
-            tag_list = [obj.pk for obj in switch_groups.objs]
+            tag_list = [obj for obj in switch_groups.objs]
 
         # Check if VLAN already exist
         vlan_vid = VLAN.objects.filter(vid=vid).values_list('pk', flat=True)
@@ -811,9 +816,10 @@ class DCNDeployNetworks(Job):
                 status=status,
                 role=vlan_role.objs[0],
                 description=vlan_name,
-                tags=tag_list
             )
             # save vlan object to DB
+            vlan_obj.validated_save()
+            vlan_obj.tags.add(*tag_list)
             vlan_obj.validated_save()
             self.log_success(message=f"{vlan_obj.name} has been saved.")
 

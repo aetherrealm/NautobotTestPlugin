@@ -4,7 +4,6 @@
 <script>
 
 // base Object IDs
-var networkSelect = document.getElementById("id_vlan_role");
 var fabricGroups = document.getElementById("id_fabric_switch_groups");
 
 // Parent & Grandparent Div Boxes
@@ -16,7 +15,7 @@ groupGrandParentDiv.style.display = "none";
 
 // Function to check if the TagSpan element has loaded yet
 function checkTagSpan() {
-    var TagSpan = document.getElementById("select2-id_fabric_switch_groups-container");
+    var TagSpan = document.getElementById("select2-id_vlan_role-container");
 
     if (TagSpan) {
         // Element found, stop polling
@@ -30,12 +29,10 @@ function checkTagSpan() {
                     // The 'title' attribute of the TagSpan has changed
                     var TagTitle = TagSpan.getAttribute('title');
                     
-                    if (TagTitle !== null) {
-                        console.log("Title has changed to:", TagTitle);
-                        groupGrandParentDiv.style.display = "none"; 
-                    } else if (lagSpanTitle === null) {
-                        console.log("Title is blank")
+                    if (TagTitle === 'evpn') {
                         groupGrandParentDiv.style.display = "block"; 
+                    } else if (TagTitle !== 'evpn') {
+                        groupGrandParentDiv.style.display = "none"; 
                     }
                 }
             }
@@ -57,19 +54,5 @@ var pollingInterval = 1000; // Poll every 1 second
 
 // Start polling
 var intervalId = setInterval(checkTagSpan, pollingInterval);
-
-// Check the selected mode on the page and decide which Divs to reveal 
-networkSelect.addEventListener("change", function() {
-    var selectedValue = networkSelect.value;
-
-if (selectedValue === "evpn") {
-        console.log("Setting switchGroups to block")
-        groupGrandParentDiv.style.display = "block";
-
-    } else {
-        console.log("Setting switchGroups back to none")
-        groupGrandParentDiv.style.display = "none";
-    }
-});
 </script>
 {% endblock javascript %}
